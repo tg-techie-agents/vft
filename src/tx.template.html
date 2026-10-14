@@ -1,0 +1,478 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data: blob:">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>VFT TX Client</title>
+<style>
+/* @@SHARED_CSS@@ */
+</style>
+<style>
+  /* TX-specific */
+  #fileinfo { display: none; font-size: 13px; }
+  #fileinfo .name { font-weight: 600; word-break: break-all; }
+  #fileinfo .row { color: var(--dim); margin-top: 2px; }
+  .tag { font-family: var(--mono); font-size: 15px; color: var(--accent); letter-spacing: .04em; user-select: all; }
+  #runrow { display: flex; gap: 8px; align-items: center; }
+  #rotinfo { margin-top: 8px; font-size: 13px; color: var(--dim); }
+  #rotinfo b { color: var(--text); font-weight: 600; }
+  #gapin { width: 100%; height: 38px; resize: vertical; }
+  #gapmsg { font-size: 12px; margin-top: 6px; min-height: 16px; }
+  #gapmsg.ok { color: var(--good); } #gapmsg.err { color: var(--bad); } #gapmsg.warn { color: var(--warn); }
+  #stage { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; min-width: 0; padding: 14px; gap: 10px; }
+  #slidebox { background: #fff; border-radius: 6px; box-shadow: 0 0 0 1px var(--edge); line-height: 0; }
+  #slide { image-rendering: pixelated; display: block; }
+  #caption { font-size: 13px; color: var(--dim); font-family: var(--mono); min-height: 18px; text-align: center; }
+  #placeholder { color: var(--dim); text-align: center; max-width: 420px; }
+  #donebanner { display: none; background: var(--good); color: #10141a; font-weight: 650; border-radius: 6px; padding: 8px 14px; }
+  /* A Rotation cycles; a filling bar would misread as completion. The sweep
+     is a clock face: position within the current Rotation, forever. */
+  #rotwrap { display: none; align-items: center; gap: 8px; color: var(--dim); font-size: 13px; }
+  #rotmeter {
+    width: 26px; height: 26px; border-radius: 50%;
+    background: conic-gradient(var(--accent) 0%, var(--track-accent) 0);
+  }
+</style>
+</head>
+<body>
+<header>
+  <h1>VFT · TX Client</h1>
+  <span class="sub">Visual File Transfer, protocol v1 · renders a file as QR Slides</span>
+  <span class="offline">offline — CSP blocks all network</span>
+  <a id="dlpage" class="dl" hidden>Download this page</a>
+</header>
+<div id="statusbar">
+  <span id="statechip" class="chip"><span class="ic">○</span><span id="statetext">Idle — no file loaded</span></span>
+  <div class="tile"><span class="tl">Rotation</span><span class="tv" id="t_rot">–</span></div>
+  <div class="tile"><span class="tl">Slide</span><span class="tv" id="t_slide">–</span></div>
+  <div class="tile"><span class="tl">Transmission set</span><span class="tv" id="t_set">–</span></div>
+  <div class="tile"><span class="tl">Payload rate</span><span class="tv" id="t_rate">–</span></div>
+  <div class="tile"><span class="tl">Time transmitting</span><span class="tv" id="t_elapsed">0s</span></div>
+</div>
+<div id="selftest"></div>
+<main>
+  <div id="sidebar">
+    <section>
+      <h2>Source file</h2>
+      <div id="drop" tabindex="0">Drop a file here or click to choose</div>
+      <input type="file" id="filein" hidden>
+      <div id="fileinfo">
+        <div class="name" id="fname"></div>
+        <div class="row"><span id="fsize"></span></div>
+        <div class="row">File Tag <span class="tag" id="ftag"></span></div>
+        <div class="row" style="word-break:break-all">SHA-256 <span id="fhash" style="font-family:var(--mono);font-size:11px"></span></div>
+      </div>
+      <div id="runrow" style="margin-top:10px">
+        <button id="startbtn" disabled>Start</button>
+        <button id="restartbtn" class="secondary" disabled>Restart Rotation</button>
+      </div>
+      <div id="rotinfo">No file loaded.</div>
+    </section>
+    <section>
+      <h2>Gap Report from RX Operator</h2>
+      <div style="margin-bottom:6px"><button id="gapclip" disabled>Apply from clipboard</button></div>
+      <textarea id="gapin" placeholder="VFT1 <filetag> <ranges> — or paste here" spellcheck="false"></textarea>
+      <div style="margin-top:6px"><button id="gapapply" class="secondary" disabled>Apply</button></div>
+      <div id="gapmsg"></div>
+    </section>
+    <section>
+      <h2>Transmission</h2>
+      <label class="ctl">Slice size (bytes) <input id="slicesize" type="number" min="16" max="2200" step="1" value="800"></label>
+      <label class="ctl">Slide interval (ms) <input id="interval" type="number" min="60" max="5000" step="10" value="100"></label>
+      <details>
+        <summary>Advanced</summary>
+        <label class="ctl">QR error correction <select id="ecc"><option value="L">L (7%)</option><option value="M" selected>M (15%)</option><option value="Q">Q (25%)</option></select></label>
+        <label class="ctl"><span><input id="setuprepeat" type="checkbox"> Repeat Setup Slide every</span>
+          <span><input id="setupevery" type="number" min="1" max="50" step="1" value="10" style="width:56px"> %</span></label>
+        <div class="row" style="color:var(--dim);font-size:12px">A Setup Slide always opens each Rotation; repeating helps late joiners (A.4).</div>
+      </details>
+      <div class="row" style="color:var(--dim);font-size:12px">Interval applies immediately; other changes apply when the next Rotation starts.</div>
+    </section>
+    <section>
+      <details open>
+        <summary>How to run a transfer</summary>
+        <ul>
+          <li>Share this window (not the whole screen) on the video call; keep it as large as possible, avoid overlays.</li>
+          <li>Start the Rotation. The RX Operator watches with the RX Client.</li>
+          <li>When a Rotation or two has passed, ask the RX Operator for a Gap Report over chat, paste it here, Apply.</li>
+          <li>A report ending in <b>-</b> means nothing is missing: you can stop.</li>
+          <li>If Symbols fail to decode on the far side: increase Slice interval or reduce Slice size.</li>
+        </ul>
+      </details>
+    </section>
+  </div>
+  <div id="stage">
+    <div id="donebanner">RX reports nothing missing — transfer complete. Transmission stopped.</div>
+    <div id="placeholder">Load a file to begin.<br><br>This page renders the file as a sequence of QR-code Slides.
+      The RX Client on the far side of the video call reconstructs the file from them.</div>
+    <div id="slidebox" style="display:none"><canvas id="slide"></canvas></div>
+    <div id="rotwrap"><div id="rotmeter" role="img" aria-label="Position in the current Rotation"></div><span id="rotlabel"></span></div>
+    <div id="caption"></div>
+  </div>
+</main>
+<script>
+/* @@QRCODEGEN@@ */
+</script>
+<script>
+/* @@PROTOCOL@@ */
+</script>
+<script>
+/* @@SHARED_UI@@ */
+</script>
+<script>
+'use strict';
+(function () {
+  initPageDownload('vft-tx.html');
+  const Ecc = { L: qrcodegen.QrCode.Ecc.LOW, M: qrcodegen.QrCode.Ecc.MEDIUM, Q: qrcodegen.QrCode.Ecc.QUARTILE };
+  // Byte capacity of QR v40 per ECC, minus headroom for MessagePack framing.
+  const SLICE_CAP = { L: 2870, M: 2250, Q: 1580 };
+
+  const state = {
+    file: null,          // {bytes, name, l, h, f, tagHex}
+    running: false,
+    accumMs: 0,
+    activeSince: null,
+    timer: null,
+    rotation: 0,
+    slides: [],          // each: {kind:'setup'} | {kind:'data', chunks:[[s,e),...]}
+    slideIdx: 0,
+    txSet: null,         // transmission set: [[s,e),...]
+    setupMsg: null,
+    stopped: false,      // '-' gap report received
+  };
+
+  // ------------------------------------------------------------ file loading
+  const drop = $('drop'), filein = $('filein');
+  drop.addEventListener('click', () => filein.click());
+  drop.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') filein.click(); });
+  drop.addEventListener('dragover', e => { e.preventDefault(); drop.classList.add('armed'); });
+  drop.addEventListener('dragleave', () => drop.classList.remove('armed'));
+  drop.addEventListener('drop', e => {
+    e.preventDefault(); drop.classList.remove('armed');
+    if (e.dataTransfer.files[0]) loadFile(e.dataTransfer.files[0]);
+  });
+  filein.addEventListener('change', () => { if (filein.files[0]) loadFile(filein.files[0]); });
+
+  async function loadFile(f) {
+    pauseRotation();
+    drop.textContent = 'Reading + hashing…';
+    const bytes = new Uint8Array(await f.arrayBuffer());
+    const h = await VFT.sha256Async(bytes);
+    const tag = h.slice(0, 8);
+    state.file = { bytes, name: f.name, l: bytes.length, h, f: tag, tagHex: VFT.toHex(tag) };
+    state.setupMsg = VFT.buildSetupMessage(tag, f.name, bytes.length, h);
+    state.txSet = [[0, bytes.length]];
+    state.rotation = 0;
+    state.stopped = false;
+    state.accumMs = 0;
+    state.activeSince = null;
+    $('donebanner').style.display = 'none';
+    drop.textContent = 'Drop a file here or click to choose';
+    $('fileinfo').style.display = 'block';
+    $('fname').textContent = f.name;
+    $('fsize').textContent = fmtBytes(bytes.length) + (bytes.length ? '' : ' (empty file)');
+    $('ftag').textContent = state.file.tagHex;
+    $('fhash').textContent = VFT.toHex(h);
+    $('startbtn').disabled = false;
+    $('restartbtn').disabled = false;
+    $('gapapply').disabled = false;
+    $('gapclip').disabled = false;
+    updateRotInfo('Loaded. Press Start.');
+  }
+
+  // ------------------------------------------------------------ rotation plan
+  // The Slide interval is the live pacing knob: it is read at every tick so
+  // operators can adjust speed mid-Rotation without a restart.
+  function currentInterval() {
+    return Math.max(60, Math.min(+$('interval').value || 100, 5000));
+  }
+
+  function config() {
+    const ecc = $('ecc').value;
+    const slice = Math.max(16, Math.min(+$('slicesize').value || 500, SLICE_CAP[ecc]));
+    $('slicesize').value = slice;
+    return {
+      slice, ecc,
+      setupRepeat: $('setuprepeat').checked,
+      setupPct: Math.max(1, Math.min(+$('setupevery').value || 10, 50)),
+    };
+  }
+
+  function buildRotation() {
+    const cfg = config();
+    const chunks = VFT.planChunks(state.txSet, cfg.slice);
+    // A.3: vary the order between Rotations to decorrelate bursty loss.
+    const shuffled = VFT.shuffle(chunks, VFT.rng((Math.random() * 2 ** 31) | 0));
+    const slides = [{ kind: 'setup' }];   // §9.1: every Rotation opens with Setup
+    // Percent of the Rotation, so the repeat cadence scales with the file.
+    const repeatEvery = Math.max(1, Math.round(chunks.length * cfg.setupPct / 100));
+    let dataSlides = 0;
+    for (const c of shuffled) {
+      slides.push({ kind: 'data', chunks: [c] });   // one Symbol per Slide
+      if (cfg.setupRepeat && ++dataSlides % repeatEvery === 0) slides.push({ kind: 'setup' });
+    }
+    state.slides = slides;
+    state.slideIdx = 0;
+    state.rotation++;
+    state.cfg = cfg;
+  }
+
+  // ------------------------------------------------------------ rendering
+  function renderSlide(slide) {
+    const cfg = state.cfg;
+    let msg;
+    if (slide.kind === 'setup') {
+      msg = state.setupMsg;
+    } else {
+      const [s, e] = slide.chunks[0];
+      msg = VFT.buildDataMessage(state.file.f, s, state.file.bytes.subarray(s, e));
+    }
+    let qr;
+    try {
+      qr = qrcodegen.QrCode.encodeSegments(
+        [qrcodegen.QrSegment.makeBytes(Array.from(msg))], Ecc[cfg.ecc]);
+    } catch (err) {
+      updateRotInfo('<b style="color:var(--bad)">Slice too large for a QR Symbol at ECC '
+        + cfg.ecc + '. Reduce Slice size.</b>');
+      pauseRotation();
+      return;
+    }
+    const quiet = 4;
+    const cell = qr.size + quiet * 2;
+    const stage = $('stage');
+    const avail = Math.min(stage.clientWidth - 40, stage.clientHeight - 90);
+    const scale = Math.max(1, Math.floor(avail / cell));
+    const canvas = $('slide');
+    canvas.width = canvas.height = cell * scale;
+    const ctx = canvas.getContext('2d');
+    ctx.fillStyle = '#fff';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.fillStyle = '#000';
+    for (let y = 0; y < qr.size; y++) for (let x = 0; x < qr.size; x++) {
+      if (qr.getModule(x, y)) ctx.fillRect((x + quiet) * scale, (y + quiet) * scale, scale, scale);
+    }
+    $('placeholder').style.display = 'none';
+    $('slidebox').style.display = 'block';
+    // The caption states what THIS code carries — the confirmation that the
+    // current settings were picked up, visible the moment a Rotation turns over.
+    const pos = `Slide ${Math.min(state.slideIdx + 1, state.slides.length)}/${state.slides.length}`;
+    if (slide.kind === 'setup') {
+      $('caption').textContent = `${pos} · Setup Code · ${state.file.name} · ${fmtBytes(state.file.l)}`;
+    } else {
+      const [s, e] = slide.chunks[0];
+      $('caption').textContent =
+        `${pos} · Slice ${e - s} B · offset ${s.toString(16)}–${e.toString(16)}`;
+    }
+  }
+
+  // ------------------------------------------------------------ run loop
+  function tick() {
+    if (!state.running) return;
+    if (state.slideIdx >= state.slides.length) buildRotation();  // next Rotation
+    renderSlide(state.slides[state.slideIdx]);
+    state.slideIdx++;
+    updateRotInfo();
+    state.timer = setTimeout(tick, currentInterval());
+  }
+
+  function startRotation() {
+    if (!state.file || state.running) return;
+    state.running = true;
+    state.activeSince = Date.now();
+    state.stopped = false;
+    $('donebanner').style.display = 'none';
+    $('startbtn').textContent = 'Pause';
+    if (!state.slides.length || state.slideIdx >= state.slides.length) buildRotation();
+    tick();
+  }
+
+  function pauseRotation() {
+    if (state.running && state.activeSince) state.accumMs += Date.now() - state.activeSince;
+    state.activeSince = null;
+    state.running = false;
+    clearTimeout(state.timer);
+    $('startbtn').textContent = 'Start';
+    updateRotInfo();
+  }
+
+  $('startbtn').addEventListener('click', () => state.running ? pauseRotation() : startRotation());
+  // Restart rebuilds the Rotation and shows its opening Setup Slide, but never
+  // changes running/paused: a paused TX Client displays the Setup Code frozen.
+  $('restartbtn').addEventListener('click', () => {
+    if (!state.file) return;
+    buildRotation();
+    renderSlide(state.slides[0]);
+    state.slideIdx = 1;
+    updateRotInfo();
+    if (state.running) {
+      clearTimeout(state.timer);
+      state.timer = setTimeout(tick, currentInterval());
+    }
+  });
+
+  // ------------------------------------------------------------ status strip
+  function elapsedMs() {
+    return state.accumMs + (state.running && state.activeSince ? Date.now() - state.activeSince : 0);
+  }
+
+  function updateRotInfo(html) {
+    // sidebar line: short status message; the numbers live in the status strip
+    // scan-ok: callers pass static markup or the operator-chosen ECC letter
+    if (html) $('rotinfo').innerHTML = html;
+    else if (!state.file) $('rotinfo').textContent = 'No file loaded.';
+    else if (state.stopped) $('rotinfo').textContent = 'Stopped — RX reported nothing missing.';
+    else if (state.running) $('rotinfo').textContent = 'Transmitting. Changes apply next Rotation.';
+    else $('rotinfo').textContent = 'Paused. Press Start to continue.';
+    updateStrip();
+  }
+
+  function updateStrip() {
+    if (!state.file) {
+      setChip('statechip', '', '○', 'Idle — no file loaded');
+      for (const id of ['t_rot', 't_slide', 't_set', 't_rate']) $(id).textContent = '–';
+      return;
+    }
+    const n = state.slides.length;
+    $('t_rot').textContent = state.rotation || '–';
+    $('t_slide').textContent = n ? Math.min(state.slideIdx, n) + ' / ' + n : '–';
+    $('t_set').textContent = fmtBytes(VFT.intervalsTotal(state.txSet)) +
+      ' · ' + state.txSet.length + (state.txSet.length === 1 ? ' range' : ' ranges');
+    if (state.cfg) {
+      // Setup repeats add ~pct% non-data Slides on top of the data stream.
+      const dataFraction = state.cfg.setupRepeat ? 1 / (1 + state.cfg.setupPct / 100) : 1;
+      const eff = state.cfg.slice * 1000 / currentInterval() * dataFraction;
+      $('t_rate').textContent = '~' + fmtBytes(Math.round(eff)) + '/s';
+    }
+    $('t_elapsed').textContent = fmtSecs(elapsedMs());
+    if (state.stopped) setChip('statechip', 'done', '✓', 'Complete — RX reported nothing missing');
+    else if (state.running) setChip('statechip', 'run', '▶', 'Transmitting · Rotation ' + state.rotation);
+    else if (state.rotation) setChip('statechip', 'paused', '⏸', 'Paused');
+    else setChip('statechip', '', '○', 'Ready — press Start');
+    const wrap = $('rotwrap');
+    if (n && !state.stopped) {
+      wrap.style.display = 'flex';
+      const pct = (100 * Math.min(state.slideIdx, n) / n).toFixed(1);
+      $('rotmeter').style.background =
+        `conic-gradient(var(--accent) ${pct}%, var(--track-accent) 0)`;
+      $('rotlabel').textContent = `Rotation ${state.rotation}`;
+    } else wrap.style.display = 'none';
+  }
+  setInterval(() => { if (state.file) $('t_elapsed').textContent = fmtSecs(elapsedMs()); }, 1000);
+
+  // ------------------------------------------------------------ gap reports
+  $('gapapply').addEventListener('click', () => applyGapReport($('gapin').value));
+  $('gapclip').addEventListener('click', async () => {
+    const msg = $('gapmsg');
+    let text;
+    try { text = await navigator.clipboard.readText(); }
+    catch (e) {
+      msg.className = 'err';
+      msg.textContent = 'Clipboard read was blocked — paste into the box instead.';
+      return;
+    }
+    $('gapin').value = text;
+    applyGapReport(text);
+  });
+
+  function applyGapReport(text) {
+    const msg = $('gapmsg');
+    msg.className = '';
+    const p = VFT.parseGapReport(text);
+    if (p.error) { msg.className = 'err'; msg.textContent = p.error; return; }
+    if (!state.file) return;
+    if (p.tag !== state.file.tagHex) {
+      msg.className = 'warn';
+      msg.textContent = `Report is for a different transfer (tag ${p.tag}, this file is ${state.file.tagHex}). Ignored.`;
+      return;
+    }
+    if (p.ranges.length === 0) {
+      state.stopped = true;
+      pauseRotation();
+      $('donebanner').style.display = 'block';
+      $('slidebox').style.display = 'none';
+      $('caption').textContent = '';
+      msg.className = 'ok'; msg.textContent = 'Nothing missing. Transmission stopped.';
+      return;
+    }
+    // Clamp to [0, l); §8.2.1 lets the report be a superset, so clamping is safe.
+    const l = state.file.l;
+    const clamped = p.ranges.map(([s, e]) => [Math.min(s, l), Math.min(e, l)]).filter(([s, e]) => s < e);
+    if (!clamped.length) { msg.className = 'err'; msg.textContent = 'All ranges lie beyond the file length; wrong file?'; return; }
+    state.txSet = clamped;
+    buildRotation();
+    msg.className = 'ok';
+    msg.textContent = `Narrowed to ${clamped.length} range${clamped.length === 1 ? '' : 's'}, ` +
+      `${fmtBytes(VFT.intervalsTotal(clamped))}. New Rotation started.`;
+    if (!state.running) startRotation();
+    // Refresh now: the operator just acted, and the strip must not keep showing
+    // the previous transmission set until the next Slide tick.
+    updateRotInfo();
+  }
+
+  // ------------------------------------------------------------ self-test
+  if (/(?:\?|&)selftest\b/.test(location.search)) runSelfTest();
+  async function runSelfTest() {
+    const out = [];
+    const t = (name, ok, extra) => out.push((ok ? 'ok    ' : 'FAIL  ') + name + (extra ? ' ' + extra : ''));
+    try {
+      // sha256 known vector: sha256("abc")
+      t('sha256 vector', VFT.toHex(VFT.sha256(new TextEncoder().encode('abc'))) ===
+        'ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad');
+      // messages round trip
+      const bytes = Uint8Array.from({ length: 300 }, (_, i) => (i * 89) & 0xff);
+      const h = VFT.sha256(bytes);
+      t('setup classifies', VFT.classify(VFT.buildSetupMessage(h.subarray(0, 8), 'st.bin', bytes.length, h)).kind === 'setup');
+      t('data classifies', VFT.classify(VFT.buildDataMessage(h.subarray(0, 8), 0, bytes)).kind === 'data');
+      // gap grammar
+      t('gap parse', !VFT.parseGapReport('VFT1 a3f2c1d40b8e7a12 0-7d0,1f400-1f7e8').error);
+      // serve-or-disk: the download-this-page button only appears when served
+      t('download button matches serving mode',
+        $('dlpage').hidden === !/^https?:$/.test(location.protocol));
+      // ---- scripted transmission through the real DOM flow
+      const demo = Uint8Array.from({ length: 5000 }, (_, i) => (i * 37 + (i >> 5)) & 0xff);
+      await loadFile(new File([demo], 'selftest-demo.bin'));
+      t('file loads via DOM path', !!state.file && state.file.l === 5000);
+      t('file tag shown', $('ftag').textContent === state.file.tagHex);
+      $('slicesize').value = 400; $('interval').value = 60;
+      startRotation();
+      t('rotation starts', state.running && state.slides.length > 1);
+      t('first slide is a Setup Slide (§9.1)', state.slides[0].kind === 'setup');
+      t('setup caption identifies the code',
+        /Slide 1\/\d+ · Setup Code · selftest-demo\.bin/.test($('caption').textContent));
+      let cov = [];
+      for (const s of state.slides) if (s.kind === 'data')
+        for (const [cs, ce] of s.chunks) cov = VFT.intervalsAdd(cov, cs, ce);
+      t('first Rotation covers [0,l) (§9.2)',
+        cov.length === 1 && cov[0][0] === 0 && cov[0][1] === 5000);
+      await new Promise(r => setTimeout(r, 250));   // let a few slides render
+      const sctx = $('slide').getContext('2d', { willReadFrequently: true });
+      const spx = sctx.getImageData(0, 0, $('slide').width, $('slide').height).data;
+      let sdark = 0; for (let i = 0; i < spx.length; i += 4) if (spx[i] < 128) sdark++;
+      t('slide canvas renders symbols', sdark > 500);
+      t('data caption confirms Slice size and offset',
+        /Slice 400 B · offset [0-9a-f]+–[0-9a-f]+/.test($('caption').textContent),
+        $('caption').textContent);
+      // apply a Gap Report and verify narrowing
+      $('gapin').value = 'VFT1 ' + state.file.tagHex + ' 0-1f4,fa0-1388';
+      $('gapapply').click();
+      t('gap report narrows the set', state.txSet.length === 2
+        && VFT.intervalsTotal(state.txSet) === 0x1f4 + (0x1388 - 0xfa0));
+      // a report for a different transfer must be ignored
+      const before = JSON.stringify(state.txSet);
+      $('gapin').value = 'VFT1 ' + '0'.repeat(16) + ' 0-64';
+      $('gapapply').click();
+      t('foreign-tag report ignored', JSON.stringify(state.txSet) === before);
+      // '-' body stops transmission
+      $('gapin').value = 'VFT1 ' + state.file.tagHex + ' -';
+      $('gapapply').click();
+      t('dash report stops transmission', !state.running && state.stopped);
+      // egress probes: every one must be blocked by CSP
+      for (const [name, ok] of await egressProbes()) t('egress blocked: ' + name, ok);
+    } catch (e) { out.push('FAIL  exception ' + e.message); }
+    reportSelfTest('VFT-TX-SELFTEST', out);
+  }
+})();
+</script>
+</body>
+</html>

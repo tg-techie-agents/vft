@@ -1,0 +1,3 @@
+#!/bin/sh
+# Nothing leaves this machine unless the full gate passes.
+exec node "$(git rev-parse --show-toplevel)/scripts/prepush.mjs"

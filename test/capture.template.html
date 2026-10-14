@@ -1,0 +1,122 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline' 'wasm-unsafe-eval'; style-src 'unsafe-inline'; img-src data: blob:; media-src blob:">
+<title>VFT capture harness</title>
+<style>
+  body { font: 13px ui-monospace, monospace; background: #fff; margin: 0; }
+  #out { white-space: pre-wrap; padding: 8px; }
+  #slide { display: block; image-rendering: pixelated; }
+</style>
+</head>
+<body>
+<canvas id="slide" width="10" height="10"></canvas>
+<div id="out">running…</div>
+<script>
+/* @@QRCODEGEN@@ */
+</script>
+<script>
+/* @@ZXING@@ */
+</script>
+<script>
+var VFT_WASM_B64 = "@@WASM_B64@@";
+</script>
+<script>
+/* @@PROTOCOL@@ */
+</script>
+<script>
+/* @@ZXING_BOOT@@ */
+</script>
+<script>
+'use strict';
+// Captures THIS tab via getDisplayMedia (auto-accepted by Chrome flags), renders
+// real TX Slides into the page, and runs the RX Client's video-scan codepath
+// (drawImage(video) -> getImageData -> zxing) against the captured stream.
+(async function () {
+  const out = [];
+  let failed = 0;
+  const t = (name, ok, extra) => {
+    if (!ok) failed++;
+    out.push((ok ? 'ok    ' : 'FAIL  ') + name + (extra ? ' ' + extra : ''));
+  };
+  const flush = () => {
+    document.getElementById('out').textContent =
+      'VFT-CAPTURE: ' + (failed ? 'FAIL' : 'PASS') + '\n' + out.join('\n');
+    document.title = 'VFT-CAPTURE-' + (failed ? 'FAIL' : 'PASS');
+  };
+  try {
+    await VFTZX.boot(ZXingWASM, VFTZX.wasmFromBase64(VFT_WASM_B64));
+
+    // A tiny complete transfer rendered as slides in this page.
+    const file = Uint8Array.from({ length: 900 }, (_, i) => (i * 89 + 7) & 0xff);
+    const h = VFT.sha256(file);
+    const tag = h.subarray(0, 8);
+    const msgs = [
+      VFT.buildSetupMessage(tag, 'capture.bin', file.length, h),
+      VFT.buildDataMessage(tag, 0, file.subarray(0, 450)),
+      VFT.buildDataMessage(tag, 450, file.subarray(450)),
+    ];
+    const canvas = document.getElementById('slide');
+    const ctx = canvas.getContext('2d');
+    function show(msg) {
+      const qr = qrcodegen.QrCode.encodeSegments(
+        [qrcodegen.QrSegment.makeBytes(Array.from(msg))], qrcodegen.QrCode.Ecc.MEDIUM);
+      const quiet = 4, scale = 6;
+      const px = (qr.size + quiet * 2) * scale;
+      canvas.width = canvas.height = px;
+      ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, px, px);
+      ctx.fillStyle = '#000';
+      for (let y = 0; y < qr.size; y++) for (let x = 0; x < qr.size; x++)
+        if (qr.getModule(x, y)) ctx.fillRect((x + quiet) * scale, (y + quiet) * scale, scale, scale);
+    }
+    show(msgs[0]);
+
+    // Capture this tab.
+    const stream = await navigator.mediaDevices.getDisplayMedia({
+      video: true, audio: false, preferCurrentTab: true,
+    });
+    t('getDisplayMedia stream acquired', !!stream && stream.getVideoTracks().length === 1);
+    const video = document.createElement('video');
+    video.muted = true;
+    video.srcObject = stream;
+    await video.play();
+    t('video plays', video.videoWidth > 0);
+
+    // RX-style scan loop against the live stream while slides rotate.
+    const engine = new VFT.RxEngine();
+    const grab = document.createElement('canvas');
+    const grabCtx = grab.getContext('2d', { willReadFrequently: true });
+    let msgIdx = 0;
+    const deadline = performance.now() + 25000;
+    while (performance.now() < deadline) {
+      show(msgs[msgIdx % msgs.length]);
+      msgIdx++;
+      await new Promise(r => setTimeout(r, 220));   // let capture pick the frame up
+      grab.width = video.videoWidth; grab.height = video.videoHeight;
+      if (!grab.width) continue;
+      grabCtx.drawImage(video, 0, 0);
+      const img = grabCtx.getImageData(0, 0, grab.width, grab.height);
+      for (const p of await VFTZX.decodeSymbols(ZXingWASM, img)) engine.ingest(p);
+      const tr = engine.transfers.get(VFT.toHex(tag));
+      if (tr && tr.hasFullCoverage()) break;
+    }
+    for (const tr of stream.getTracks()) tr.stop();
+
+    const tr = engine.transfers.get(VFT.toHex(tag));
+    t('transfer received via live capture', !!tr && !!tr.setup);
+    t('full coverage via live capture', !!tr && tr.hasFullCoverage());
+    if (tr && tr.hasFullCoverage()) {
+      await tr.checkCompletion();
+      t('digest verified via live capture', tr.complete);
+      t('bytes identical', VFT.bytesEqual(tr.buf, file));
+    }
+    t('no incoherence', !tr || tr.incoherences.length === 0);
+  } catch (e) {
+    t('exception: ' + (e && e.message), false);
+  }
+  flush();
+})();
+</script>
+</body>
+</html>

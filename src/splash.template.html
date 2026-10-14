@@ -1,0 +1,142 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; img-src data:">
+<meta name="description" content="Send a file through a video call or screen share as rotating QR codes. Two single-file pages, no upload, no install, SHA-256 verified.">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 16 16%22%3E%3Crect x=%222%22 y=%222%22 width=%2212%22 height=%2212%22 rx=%222%22 fill=%22%232f5d50%22/%3E%3Crect x=%224.5%22 y=%224.5%22 width=%223%22 height=%223%22 fill=%22%23fff%22/%3E%3Crect x=%229%22 y=%229%22 width=%222.5%22 height=%222.5%22 fill=%22%23fff%22/%3E%3C/svg%3E">
+<title>Visual File Transfer</title>
+<style>
+  :root { --bg: #f6f5f1; --panel: #ffffff; --ink: #1d1c1a; --muted: #6d6a63; --line: #e3e0d8;
+    --accent: #2f5d50; --soft: #e9efe9; --warm: #b4532a; --warmsoft: #f6e7df; }
+  * { box-sizing: border-box; }
+  html { background: var(--bg); }
+  body { margin: 0; color: var(--ink); background: var(--bg);
+    font-family: ui-sans-serif, -apple-system, "Segoe UI", sans-serif; line-height: 1.4;
+    /* one fluid scale: a phone gets ~16px, a 1920px projector gets ~26px */
+    font-size: clamp(16px, 1.25vw, 26px); }
+  main { max-width: 80em; margin: 0 auto; padding: 1.6em 1.5em 2em; }
+  .kicker { margin: 0 0 .4em; color: var(--accent); font-weight: 600; letter-spacing: .04em;
+    text-transform: uppercase; font-size: .9em; }
+  h1 { margin: 0 0 .3em; font-size: 2.8em; line-height: 1.05; letter-spacing: -.02em; max-width: 15em; }
+  h2 { margin: 0 0 .5em; font-size: 1.5em; letter-spacing: -.01em; }
+  .lead { margin: 0 0 1.1em; font-size: 1.25em; color: var(--muted); max-width: 30em; }
+  .hero { display: flex; flex-wrap: wrap; gap: 2.5em; align-items: center; justify-content: space-between; }
+  .hero > .text { flex: 1 1 24em; min-width: 0; }
+  .actions { display: flex; flex-wrap: wrap; gap: .8em; margin: 0 0 1.2em; }
+  .btn { display: inline-block; padding: .65em 1.3em; border-radius: .6em; font-weight: 650;
+    font-size: 1.1em; text-decoration: none; border: 2px solid var(--accent); }
+  .btn.primary { background: var(--accent); color: #fff; }
+  .btn.ghost { color: var(--accent); background: transparent; }
+  .btn:focus-visible { outline: 3px solid var(--warm); outline-offset: 2px; }
+  .btn small { display: block; font-weight: 500; font-size: .7em; opacity: .85; }
+  .qr { flex: 0 1 13em; text-align: center; }
+  .qr svg { width: 100%; height: auto; display: block; background: #fff; padding: .6em; border-radius: .9em;
+    box-shadow: 0 0 0 1px var(--line); }
+  .url { margin: .5em 0 0; font: 600 .78em ui-monospace, Menlo, monospace; color: var(--accent); white-space: nowrap; }
+  section { margin-top: 1.8em; }
+  .flow svg { width: 100%; max-width: 62em; height: auto; display: block; }
+  svg text { fill: var(--ink); font-family: ui-sans-serif, -apple-system, "Segoe UI", sans-serif; }
+  svg .m { fill: var(--muted); }
+  svg .a { fill: var(--accent); }
+  svg .w { fill: var(--warm); }
+  .facts { display: grid; grid-template-columns: repeat(auto-fit, minmax(15em, 1fr)); gap: 1em; }
+  .fact { background: var(--panel); border: 1px solid var(--line); border-radius: .8em; padding: 1em 1.1em; }
+  .fact h3 { margin: 0 0 .3em; font-size: 1.1em; color: var(--accent); }
+  .fact p { margin: 0; color: var(--ink); }
+  .fact.warm h3 { color: var(--warm); }
+  footer { margin-top: 2.4em; padding-top: 1em; border-top: 1px solid var(--line); color: var(--muted); font-size: .9em; }
+  footer a { color: var(--accent); }
+  code { font: .95em ui-monospace, Menlo, monospace; }
+  @media (max-width: 700px) { h1 { font-size: 2.4em; } .flow svg { min-width: 38em; } .flow { overflow-x: auto; } }
+</style>
+</head>
+<body>
+<main>
+  <div class="hero">
+    <div class="text">
+      <p class="kicker">Visual File Transfer</p>
+      <h1>Send a file through a video call.</h1>
+      <p class="lead">No upload, no install, no account. The file crosses as flashing QR codes on a shared screen, and arrives checked.</p>
+      <div class="actions">
+        <a class="btn primary" href="tx.html">Send a file<small>open on the sender's computer</small></a>
+        <a class="btn ghost" href="rx.html">Receive a file<small>open on the receiver's computer</small></a>
+      </div>
+    </div>
+    <div class="qr" aria-label="QR code for @@SITE_URL@@">
+      @@QR_SVG@@
+      <p class="url">@@SITE_LABEL@@</p>
+    </div>
+  </div>
+
+  <section class="flow" aria-labelledby="how">
+    <h2 id="how">How it works</h2>
+    <svg viewBox="0 0 1200 330" role="img" aria-label="The sender page shows rotating QR codes. They cross the video call. The receiver page captures that shared window, reassembles the file, and checks its SHA-256 before offering it. The receiver sends a gap report back through chat, and the sender repeats only what is missing.">
+      <defs><marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="#6d6a63"/></marker>
+      <marker id="aw" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="#b4532a"/></marker></defs>
+
+      <rect x="10" y="30" width="220" height="150" rx="16" fill="#e9efe9" stroke="#2f5d50" stroke-width="2"/>
+      <text x="120" y="82" text-anchor="middle" font-size="26" font-weight="700">Sender</text>
+      <text x="120" y="116" text-anchor="middle" font-size="20" class="a">tx.html</text>
+      <text x="120" y="148" text-anchor="middle" font-size="17" class="m">pick a file, press Start</text>
+
+      <line x1="234" y1="105" x2="326" y2="105" stroke="#6d6a63" stroke-width="3" marker-end="url(#ah)"/>
+      <text x="280" y="68" text-anchor="middle" font-size="17" class="m">rotating</text>
+      <text x="280" y="90" text-anchor="middle" font-size="17" class="m">QR codes</text>
+
+      <rect x="330" y="30" width="220" height="150" rx="16" fill="#ffffff" stroke="#6d6a63" stroke-width="2"/>
+      <text x="440" y="82" text-anchor="middle" font-size="26" font-weight="700">Video call</text>
+      <text x="440" y="116" text-anchor="middle" font-size="20" class="m">screen share</text>
+      <text x="440" y="148" text-anchor="middle" font-size="17" class="m">tested on Google Meet</text>
+
+      <line x1="554" y1="105" x2="646" y2="105" stroke="#6d6a63" stroke-width="3" marker-end="url(#ah)"/>
+      <text x="600" y="68" text-anchor="middle" font-size="17" class="m">captured</text>
+      <text x="600" y="90" text-anchor="middle" font-size="17" class="m">as video</text>
+
+      <rect x="650" y="30" width="220" height="150" rx="16" fill="#e9efe9" stroke="#2f5d50" stroke-width="2"/>
+      <text x="760" y="82" text-anchor="middle" font-size="26" font-weight="700">Receiver</text>
+      <text x="760" y="116" text-anchor="middle" font-size="20" class="a">rx.html</text>
+      <text x="760" y="148" text-anchor="middle" font-size="17" class="m">captures that window</text>
+
+      <line x1="874" y1="105" x2="966" y2="105" stroke="#6d6a63" stroke-width="3" marker-end="url(#ah)"/>
+      <text x="920" y="68" text-anchor="middle" font-size="17" class="m">checked</text>
+      <text x="920" y="90" text-anchor="middle" font-size="17" class="m">SHA-256</text>
+
+      <rect x="970" y="30" width="220" height="150" rx="16" fill="#ffffff" stroke="#2f5d50" stroke-width="2"/>
+      <text x="1080" y="82" text-anchor="middle" font-size="26" font-weight="700">Saved file</text>
+      <text x="1080" y="116" text-anchor="middle" font-size="20" class="a">byte-identical</text>
+      <text x="1080" y="148" text-anchor="middle" font-size="17" class="m">or withheld</text>
+
+      <path d="M760 184 V258 H120 V186" fill="none" stroke="#b4532a" stroke-width="3" stroke-dasharray="9 7" marker-end="url(#aw)"/>
+      <text x="440" y="246" text-anchor="middle" font-size="19" class="w">gap report, pasted into chat</text>
+      <text x="440" y="296" text-anchor="middle" font-size="18" class="m">the sender then repeats only the pieces that were missed</text>
+    </svg>
+  </section>
+
+  <section aria-labelledby="facts">
+    <h2 id="facts">What to know</h2>
+    <div class="facts">
+      <div class="fact">
+        <h3>Nothing leaves the page</h3>
+        <p>Each page is one file with a Content-Security-Policy of <code>default-src 'none'</code>. The browser itself refuses every network request, so the file only travels over the call.</p>
+      </div>
+      <div class="fact">
+        <h3>Checked, not trusted</h3>
+        <p>The receiver verifies the SHA-256 digest before it offers Save. Any contradiction in what it sees is shown as an error and never as a success.</p>
+      </div>
+      <div class="fact warm">
+        <h3>Slow, on purpose small</h3>
+        <p>About 400 bytes per second in the one real call it was measured on. Good for notes, configs, and small PDFs; not for video.</p>
+      </div>
+    </div>
+  </section>
+
+  <footer>
+    Tested end to end over Google Meet on 2026-08-04: a 69,466-byte PDF arrived byte-identical.
+    Source and notes: <a href="https://github.com/tg-techie-agents/vft">github.com/tg-techie-agents/vft</a>.
+    Built on <a href="licenses.txt">open-source components</a>.
+  </footer>
+</main>
+</body>
+</html>

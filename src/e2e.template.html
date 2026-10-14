@@ -1,0 +1,192 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline' 'wasm-unsafe-eval'; style-src 'unsafe-inline'; img-src data: blob:">
+<title>VFT E2E harness</title>
+<style>body{font:13px ui-monospace,monospace;white-space:pre-wrap;padding:16px}</style>
+</head>
+<body>
+<div id="out">running…</div>
+<script>
+/* @@QRCODEGEN@@ */
+</script>
+<script>
+/* @@ZXING@@ */
+</script>
+<script>
+var VFT_WASM_B64 = "@@WASM_B64@@";
+</script>
+<script>
+/* @@PROTOCOL@@ */
+</script>
+<script>
+/* @@ZXING_BOOT@@ */
+</script>
+<script>
+'use strict';
+// In-browser end-to-end: TX-style canvas rendering -> capture-style rescale ->
+// zxing decode -> RX engine, with Slide loss, Gap Reports, narrowed Rotations.
+(async function () {
+  const out = [];
+  let failed = 0;
+  const t = (name, ok, extra) => {
+    if (!ok) failed++;
+    out.push((ok ? 'ok    ' : 'FAIL  ') + name + (extra ? ' ' + extra : ''));
+  };
+  const flush = () => {
+    document.getElementById('out').textContent =
+      'VFT-E2E: ' + (failed ? 'FAIL' : 'PASS') + '\n' + out.join('\n');
+    document.title = 'VFT-E2E-' + (failed ? 'FAIL' : 'PASS');
+  };
+
+  try {
+    // ---- boot decoder from embedded bytes via the shared boot module
+    await VFTZX.boot(ZXingWASM, VFTZX.wasmFromBase64(VFT_WASM_B64));
+    t('decoder boots from embedded wasm', true);
+
+    const Ecc = qrcodegen.QrCode.Ecc;
+
+    // ---- TX-style slide renderer (canvas, like the TX Client)
+    const slideCanvas = document.createElement('canvas');
+    const slideCtx = slideCanvas.getContext('2d', { willReadFrequently: true });
+    function renderSlide(msgs, scale) {
+      const qrs = msgs.map(m => qrcodegen.QrCode.encodeSegments(
+        [qrcodegen.QrSegment.makeBytes(Array.from(m))], Ecc.MEDIUM));
+      const quiet = 4;
+      const cols = Math.ceil(Math.sqrt(qrs.length));
+      const rows = Math.ceil(qrs.length / cols);
+      const cell = Math.max(...qrs.map(q => q.size)) + quiet * 2;
+      slideCanvas.width = cols * cell * scale;
+      slideCanvas.height = rows * cell * scale;
+      slideCtx.fillStyle = '#fff';
+      slideCtx.fillRect(0, 0, slideCanvas.width, slideCanvas.height);
+      slideCtx.fillStyle = '#000';
+      qrs.forEach((qr, i) => {
+        const ox = ((i % cols) * cell + quiet) * scale, oy = (Math.floor(i / cols) * cell + quiet) * scale;
+        for (let y = 0; y < qr.size; y++) for (let x = 0; x < qr.size; x++)
+          if (qr.getModule(x, y)) slideCtx.fillRect(ox + x * scale, oy + y * scale, scale, scale);
+      });
+    }
+
+    // ---- capture simulation: rescale through a second canvas (smoothing on)
+    const capCanvas = document.createElement('canvas');
+    const capCtx = capCanvas.getContext('2d', { willReadFrequently: true });
+    function captureFrame(factor) {
+      capCanvas.width = Math.round(slideCanvas.width * factor);
+      capCanvas.height = Math.round(slideCanvas.height * factor);
+      capCtx.imageSmoothingEnabled = true;
+      capCtx.drawImage(slideCanvas, 0, 0, capCanvas.width, capCanvas.height);
+      return capCtx.getImageData(0, 0, capCanvas.width, capCanvas.height);
+    }
+
+    const scan = imageData => VFTZX.decodeSymbols(ZXingWASM, imageData);
+
+    // ---- transfer under bursty loss
+    const FILE_LEN = 40000, SLICE = 450, PER_SLIDE = 4, SETUP_EVERY = 6;
+    const rnd = VFT.rng(2026);
+    const file = Uint8Array.from({ length: FILE_LEN }, () => Math.floor(rnd() * 256));
+    const h = await VFT.sha256Async(file);
+    t('sha256Async matches pure JS', VFT.bytesEqual(h, VFT.sha256(file)));
+    const tag = h.slice(0, 8);
+    const setupMsg = VFT.buildSetupMessage(tag, 'e2e — файл 测试.bin', FILE_LEN, h);
+
+    const engine = new VFT.RxEngine();
+    const incs = [];
+    engine.onIncoherence = (tr, inc) => incs.push(inc.type);
+
+    let ranges = [[0, FILE_LEN]];
+    let rotations = 0;
+    const lossRng = VFT.rng(4242);
+    while (rotations < 8) {
+      rotations++;
+      const chunks = VFT.shuffle(VFT.planChunks(ranges, SLICE), VFT.rng(rotations * 31));
+      const slides = [['setup']];
+      let group = [], ds = 0;
+      for (const c of chunks) {
+        group.push(c);
+        if (group.length === PER_SLIDE) {
+          slides.push(group); group = [];
+          if (++ds % SETUP_EVERY === 0) slides.push(['setup']);
+        }
+      }
+      if (group.length) slides.push(group);
+
+      let burst = 0;
+      for (const slide of slides) {
+        if (burst > 0) { burst--; continue; }
+        if (rotations === 1 && lossRng() < 0.18) { burst = Math.floor(lossRng() * 3); continue; }
+        const msgs = slide[0] === 'setup'
+          ? [setupMsg]
+          : slide.map(([s, e]) => VFT.buildDataMessage(tag, s, file.subarray(s, e)));
+        renderSlide(msgs, 3);
+        // Alternate capture quality across slides: exact, downscaled, upscaled.
+        const factor = [1, 0.85, 1.15][(rotations + slides.indexOf(slide)) % 3];
+        for (const p of await scan(captureFrame(factor))) engine.ingest(p);
+      }
+      const tr = engine.transfers.get(VFT.toHex(tag));
+      if (tr && tr.hasFullCoverage()) break;
+      if (tr && tr.setup) {
+        const rep = tr.gapReport(6);
+        const parsed = VFT.parseGapReport(rep);
+        t(`rotation ${rotations}: gap report parses (${rep.length} chars)`, !parsed.error);
+        ranges = parsed.ranges;
+      }
+    }
+
+    const tr = engine.transfers.get(VFT.toHex(tag));
+    t('transfer exists', !!tr);
+    t(`coverage complete in ${rotations} rotations`, tr && tr.hasFullCoverage());
+    if (tr) {
+      await tr.checkCompletion();
+      t('digest verified', tr.complete);
+      t('bytes identical', VFT.bytesEqual(tr.buf, file));
+      t('no incoherence on clean transfer', incs.length === 0, JSON.stringify(incs));
+      t('unicode filename survives', tr.setup.n === 'e2e — файл 测试.bin');
+    }
+
+    // ---- incoherence path: a conflicting Slice must be reported, and the
+    // transfer must refuse to look successful afterwards (§7.2.8, §7.4.14).
+    {
+      const f2 = Uint8Array.from({ length: 600 }, (_, i) => (i * 3) & 0xff);
+      const h2 = await VFT.sha256Async(f2);
+      const tag2 = h2.slice(0, 8);
+      renderSlide([VFT.buildSetupMessage(tag2, 'x', 600, h2),
+                   VFT.buildDataMessage(tag2, 0, f2.subarray(0, 400))], 3);
+      for (const p of await scan(captureFrame(1))) engine.ingest(p);
+      const evil = f2.slice(200, 600); evil[5] ^= 0xff;
+      renderSlide([VFT.buildDataMessage(tag2, 200, evil)], 3);
+      for (const p of await scan(captureFrame(1))) engine.ingest(p);
+      const tr2 = engine.transfers.get(VFT.toHex(tag2));
+      t('conflict via the visual channel is reported', incs.includes('conflict'));
+      t('conflicted transfer marked failed', tr2 && tr2.failed);
+    }
+
+    // ---- egress probes under this page's CSP
+    {
+      const violations = [];
+      document.addEventListener('securitypolicyviolation',
+        e => violations.push(e.effectiveDirective || e.violatedDirective));
+      try { await fetch('https://example.com/vft'); t('egress blocked: fetch', false); }
+      catch (e) { t('egress blocked: fetch', true); }
+      const wsBlocked = await new Promise(r => {
+        let done = false; const fin = ok => { if (!done) { done = true; r(ok); } };
+        try {
+          const ws = new WebSocket('wss://example.com/vft');
+          ws.onopen = () => fin(false);
+          ws.onerror = () => fin(true);
+          setTimeout(() => fin(true), 1500);
+        } catch (e) { fin(true); }
+      });
+      t('egress blocked: websocket', wsBlocked);
+      await new Promise(r => setTimeout(r, 100));
+      t('csp violation events observed (' + violations.length + ')', violations.length >= 2);
+    }
+  } catch (e) {
+    t('exception: ' + (e && e.message) + '\n' + (e && e.stack), false);
+  }
+  flush();
+})();
+</script>
+</body>
+</html>

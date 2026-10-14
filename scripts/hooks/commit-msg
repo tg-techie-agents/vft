@@ -1,0 +1,3 @@
+#!/bin/sh
+# A commit message is public too: no session links, no private names.
+exec node "$(git rev-parse --show-toplevel)/scripts/scan.mjs" --message "$1"

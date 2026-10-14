@@ -1,0 +1,142 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; img-src data:">
+<meta name="description" content="Send a file through a video call or screen share as rotating QR codes. Two single-file pages, no upload, no install, SHA-256 verified.">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 16 16%22%3E%3Crect x=%222%22 y=%222%22 width=%2212%22 height=%2212%22 rx=%222%22 fill=%22%232f5d50%22/%3E%3Crect x=%224.5%22 y=%224.5%22 width=%223%22 height=%223%22 fill=%22%23fff%22/%3E%3Crect x=%229%22 y=%229%22 width=%222.5%22 height=%222.5%22 fill=%22%23fff%22/%3E%3C/svg%3E">
+<title>Visual File Transfer</title>
+<style>
+  :root { --bg: #f6f5f1; --panel: #ffffff; --ink: #1d1c1a; --muted: #6d6a63; --line: #e3e0d8;
+    --accent: #2f5d50; --soft: #e9efe9; --warm: #b4532a; --warmsoft: #f6e7df; }
+  * { box-sizing: border-box; }
+  html { background: var(--bg); }
+  body { margin: 0; color: var(--ink); background: var(--bg);
+    font-family: ui-sans-serif, -apple-system, "Segoe UI", sans-serif; line-height: 1.4;
+    /* one fluid scale: a phone gets ~16px, a 1920px projector gets ~26px */
+    font-size: clamp(16px, 1.25vw, 26px); }
+  main { max-width: 80em; margin: 0 auto; padding: 1.6em 1.5em 2em; }
+  .kicker { margin: 0 0 .4em; color: var(--accent); font-weight: 600; letter-spacing: .04em;
+    text-transform: uppercase; font-size: .9em; }
+  h1 { margin: 0 0 .3em; font-size: 2.8em; line-height: 1.05; letter-spacing: -.02em; max-width: 15em; }
+  h2 { margin: 0 0 .5em; font-size: 1.5em; letter-spacing: -.01em; }
+  .lead { margin: 0 0 1.1em; font-size: 1.25em; color: var(--muted); max-width: 30em; }
+  .hero { display: flex; flex-wrap: wrap; gap: 2.5em; align-items: center; justify-content: space-between; }
+  .hero > .text { flex: 1 1 24em; min-width: 0; }
+  .actions { display: flex; flex-wrap: wrap; gap: .8em; margin: 0 0 1.2em; }
+  .btn { display: inline-block; padding: .65em 1.3em; border-radius: .6em; font-weight: 650;
+    font-size: 1.1em; text-decoration: none; border: 2px solid var(--accent); }
+  .btn.primary { background: var(--accent); color: #fff; }
+  .btn.ghost { color: var(--accent); background: transparent; }
+  .btn:focus-visible { outline: 3px solid var(--warm); outline-offset: 2px; }
+  .btn small { display: block; font-weight: 500; font-size: .7em; opacity: .85; }
+  .qr { flex: 0 1 13em; text-align: center; }
+  .qr svg { width: 100%; height: auto; display: block; background: #fff; padding: .6em; border-radius: .9em;
+    box-shadow: 0 0 0 1px var(--line); }
+  .url { margin: .5em 0 0; font: 600 .78em ui-monospace, Menlo, monospace; color: var(--accent); white-space: nowrap; }
+  section { margin-top: 1.8em; }
+  .flow svg { width: 100%; max-width: 62em; height: auto; display: block; }
+  svg text { fill: var(--ink); font-family: ui-sans-serif, -apple-system, "Segoe UI", sans-serif; }
+  svg .m { fill: var(--muted); }
+  svg .a { fill: var(--accent); }
+  svg .w { fill: var(--warm); }
+  .facts { display: grid; grid-template-columns: repeat(auto-fit, minmax(15em, 1fr)); gap: 1em; }
+  .fact { background: var(--panel); border: 1px solid var(--line); border-radius: .8em; padding: 1em 1.1em; }
+  .fact h3 { margin: 0 0 .3em; font-size: 1.1em; color: var(--accent); }
+  .fact p { margin: 0; color: var(--ink); }
+  .fact.warm h3 { color: var(--warm); }
+  footer { margin-top: 2.4em; padding-top: 1em; border-top: 1px solid var(--line); color: var(--muted); font-size: .9em; }
+  footer a { color: var(--accent); }
+  code { font: .95em ui-monospace, Menlo, monospace; }
+  @media (max-width: 700px) { h1 { font-size: 2.4em; } .flow svg { min-width: 38em; } .flow { overflow-x: auto; } }
+</style>
+</head>
+<body>
+<main>
+  <div class="hero">
+    <div class="text">
+      <p class="kicker">Visual File Transfer</p>
+      <h1>Send a file through a video call.</h1>
+      <p class="lead">No upload, no install, no account. The file crosses as flashing QR codes on a shared screen, and arrives checked.</p>
+      <div class="actions">
+        <a class="btn primary" href="tx.html">Send a file<small>open on the sender's computer</small></a>
+        <a class="btn ghost" href="rx.html">Receive a file<small>open on the receiver's computer</small></a>
+      </div>
+    </div>
+    <div class="qr" aria-label="QR code for https://tg-techie-agents.github.io/vft/">
+      <svg viewBox="0 0 37 37" shape-rendering="crispEdges" role="img" aria-label="QR code for https://tg-techie-agents.github.io/vft/"><path fill="#fff" d="M0 0h37v37H0z"/><path fill="#1d1c1a" d="M4 4h1v1h-1zM5 4h1v1h-1zM6 4h1v1h-1zM7 4h1v1h-1zM8 4h1v1h-1zM9 4h1v1h-1zM10 4h1v1h-1zM12 4h1v1h-1zM14 4h1v1h-1zM20 4h1v1h-1zM23 4h1v1h-1zM24 4h1v1h-1zM26 4h1v1h-1zM27 4h1v1h-1zM28 4h1v1h-1zM29 4h1v1h-1zM30 4h1v1h-1zM31 4h1v1h-1zM32 4h1v1h-1zM4 5h1v1h-1zM10 5h1v1h-1zM12 5h1v1h-1zM13 5h1v1h-1zM14 5h1v1h-1zM17 5h1v1h-1zM21 5h1v1h-1zM22 5h1v1h-1zM24 5h1v1h-1zM26 5h1v1h-1zM32 5h1v1h-1zM4 6h1v1h-1zM6 6h1v1h-1zM7 6h1v1h-1zM8 6h1v1h-1zM10 6h1v1h-1zM13 6h1v1h-1zM17 6h1v1h-1zM19 6h1v1h-1zM24 6h1v1h-1zM26 6h1v1h-1zM28 6h1v1h-1zM29 6h1v1h-1zM30 6h1v1h-1zM32 6h1v1h-1zM4 7h1v1h-1zM6 7h1v1h-1zM7 7h1v1h-1zM8 7h1v1h-1zM10 7h1v1h-1zM12 7h1v1h-1zM13 7h1v1h-1zM17 7h1v1h-1zM18 7h1v1h-1zM19 7h1v1h-1zM20 7h1v1h-1zM21 7h1v1h-1zM23 7h1v1h-1zM26 7h1v1h-1zM28 7h1v1h-1zM29 7h1v1h-1zM30 7h1v1h-1zM32 7h1v1h-1zM4 8h1v1h-1zM6 8h1v1h-1zM7 8h1v1h-1zM8 8h1v1h-1zM10 8h1v1h-1zM13 8h1v1h-1zM14 8h1v1h-1zM16 8h1v1h-1zM19 8h1v1h-1zM20 8h1v1h-1zM21 8h1v1h-1zM22 8h1v1h-1zM23 8h1v1h-1zM26 8h1v1h-1zM28 8h1v1h-1zM29 8h1v1h-1zM30 8h1v1h-1zM32 8h1v1h-1zM4 9h1v1h-1zM10 9h1v1h-1zM16 9h1v1h-1zM17 9h1v1h-1zM18 9h1v1h-1zM21 9h1v1h-1zM23 9h1v1h-1zM24 9h1v1h-1zM26 9h1v1h-1zM32 9h1v1h-1zM4 10h1v1h-1zM5 10h1v1h-1zM6 10h1v1h-1zM7 10h1v1h-1zM8 10h1v1h-1zM9 10h1v1h-1zM10 10h1v1h-1zM12 10h1v1h-1zM14 10h1v1h-1zM16 10h1v1h-1zM18 10h1v1h-1zM20 10h1v1h-1zM22 10h1v1h-1zM24 10h1v1h-1zM26 10h1v1h-1zM27 10h1v1h-1zM28 10h1v1h-1zM29 10h1v1h-1zM30 10h1v1h-1zM31 10h1v1h-1zM32 10h1v1h-1zM12 11h1v1h-1zM14 11h1v1h-1zM18 11h1v1h-1zM19 11h1v1h-1zM20 11h1v1h-1zM21 11h1v1h-1zM22 11h1v1h-1zM4 12h1v1h-1zM6 12h1v1h-1zM7 12h1v1h-1zM9 12h1v1h-1zM10 12h1v1h-1zM11 12h1v1h-1zM14 12h1v1h-1zM15 12h1v1h-1zM16 12h1v1h-1zM19 12h1v1h-1zM20 12h1v1h-1zM21 12h1v1h-1zM23 12h1v1h-1zM26 12h1v1h-1zM29 12h1v1h-1zM31 12h1v1h-1zM32 12h1v1h-1zM5 13h1v1h-1zM6 13h1v1h-1zM7 13h1v1h-1zM9 13h1v1h-1zM12 13h1v1h-1zM13 13h1v1h-1zM15 13h1v1h-1zM16 13h1v1h-1zM17 13h1v1h-1zM21 13h1v1h-1zM22 13h1v1h-1zM23 13h1v1h-1zM24 13h1v1h-1zM25 13h1v1h-1zM26 13h1v1h-1zM27 13h1v1h-1zM28 13h1v1h-1zM32 13h1v1h-1zM4 14h1v1h-1zM6 14h1v1h-1zM8 14h1v1h-1zM10 14h1v1h-1zM12 14h1v1h-1zM13 14h1v1h-1zM16 14h1v1h-1zM17 14h1v1h-1zM20 14h1v1h-1zM22 14h1v1h-1zM25 14h1v1h-1zM27 14h1v1h-1zM30 14h1v1h-1zM31 14h1v1h-1zM4 15h1v1h-1zM7 15h1v1h-1zM8 15h1v1h-1zM9 15h1v1h-1zM11 15h1v1h-1zM13 15h1v1h-1zM14 15h1v1h-1zM17 15h1v1h-1zM18 15h1v1h-1zM19 15h1v1h-1zM24 15h1v1h-1zM25 15h1v1h-1zM26 15h1v1h-1zM27 15h1v1h-1zM32 15h1v1h-1zM4 16h1v1h-1zM5 16h1v1h-1zM6 16h1v1h-1zM9 16h1v1h-1zM10 16h1v1h-1zM11 16h1v1h-1zM12 16h1v1h-1zM13 16h1v1h-1zM15 16h1v1h-1zM21 16h1v1h-1zM27 16h1v1h-1zM29 16h1v1h-1zM30 16h1v1h-1zM6 17h1v1h-1zM7 17h1v1h-1zM8 17h1v1h-1zM12 17h1v1h-1zM15 17h1v1h-1zM16 17h1v1h-1zM17 17h1v1h-1zM18 17h1v1h-1zM19 17h1v1h-1zM20 17h1v1h-1zM21 17h1v1h-1zM23 17h1v1h-1zM26 17h1v1h-1zM30 17h1v1h-1zM31 17h1v1h-1zM32 17h1v1h-1zM5 18h1v1h-1zM6 18h1v1h-1zM7 18h1v1h-1zM8 18h1v1h-1zM10 18h1v1h-1zM13 18h1v1h-1zM14 18h1v1h-1zM16 18h1v1h-1zM18 18h1v1h-1zM21 18h1v1h-1zM22 18h1v1h-1zM23 18h1v1h-1zM24 18h1v1h-1zM26 18h1v1h-1zM27 18h1v1h-1zM30 18h1v1h-1zM31 18h1v1h-1zM32 18h1v1h-1zM4 19h1v1h-1zM9 19h1v1h-1zM12 19h1v1h-1zM13 19h1v1h-1zM14 19h1v1h-1zM15 19h1v1h-1zM16 19h1v1h-1zM17 19h1v1h-1zM19 19h1v1h-1zM26 19h1v1h-1zM27 19h1v1h-1zM31 19h1v1h-1zM5 20h1v1h-1zM7 20h1v1h-1zM8 20h1v1h-1zM9 20h1v1h-1zM10 20h1v1h-1zM11 20h1v1h-1zM12 20h1v1h-1zM13 20h1v1h-1zM15 20h1v1h-1zM16 20h1v1h-1zM19 20h1v1h-1zM22 20h1v1h-1zM24 20h1v1h-1zM25 20h1v1h-1zM27 20h1v1h-1zM28 20h1v1h-1zM29 20h1v1h-1zM31 20h1v1h-1zM8 21h1v1h-1zM9 21h1v1h-1zM11 21h1v1h-1zM12 21h1v1h-1zM15 21h1v1h-1zM17 21h1v1h-1zM19 21h1v1h-1zM21 21h1v1h-1zM24 21h1v1h-1zM29 21h1v1h-1zM30 21h1v1h-1zM31 21h1v1h-1zM4 22h1v1h-1zM8 22h1v1h-1zM10 22h1v1h-1zM11 22h1v1h-1zM13 22h1v1h-1zM19 22h1v1h-1zM22 22h1v1h-1zM24 22h1v1h-1zM25 22h1v1h-1zM26 22h1v1h-1zM27 22h1v1h-1zM30 22h1v1h-1zM6 23h1v1h-1zM9 23h1v1h-1zM12 23h1v1h-1zM13 23h1v1h-1zM15 23h1v1h-1zM16 23h1v1h-1zM19 23h1v1h-1zM20 23h1v1h-1zM21 23h1v1h-1zM22 23h1v1h-1zM30 23h1v1h-1zM5 24h1v1h-1zM6 24h1v1h-1zM7 24h1v1h-1zM8 24h1v1h-1zM10 24h1v1h-1zM11 24h1v1h-1zM14 24h1v1h-1zM15 24h1v1h-1zM16 24h1v1h-1zM17 24h1v1h-1zM19 24h1v1h-1zM20 24h1v1h-1zM21 24h1v1h-1zM22 24h1v1h-1zM24 24h1v1h-1zM25 24h1v1h-1zM26 24h1v1h-1zM27 24h1v1h-1zM28 24h1v1h-1zM29 24h1v1h-1zM30 24h1v1h-1zM12 25h1v1h-1zM13 25h1v1h-1zM14 25h1v1h-1zM15 25h1v1h-1zM17 25h1v1h-1zM18 25h1v1h-1zM24 25h1v1h-1zM28 25h1v1h-1zM29 25h1v1h-1zM30 25h1v1h-1zM31 25h1v1h-1zM32 25h1v1h-1zM4 26h1v1h-1zM5 26h1v1h-1zM6 26h1v1h-1zM7 26h1v1h-1zM8 26h1v1h-1zM9 26h1v1h-1zM10 26h1v1h-1zM12 26h1v1h-1zM16 26h1v1h-1zM17 26h1v1h-1zM21 26h1v1h-1zM22 26h1v1h-1zM23 26h1v1h-1zM24 26h1v1h-1zM26 26h1v1h-1zM28 26h1v1h-1zM29 26h1v1h-1zM31 26h1v1h-1zM4 27h1v1h-1zM10 27h1v1h-1zM12 27h1v1h-1zM13 27h1v1h-1zM19 27h1v1h-1zM20 27h1v1h-1zM23 27h1v1h-1zM24 27h1v1h-1zM28 27h1v1h-1zM29 27h1v1h-1zM31 27h1v1h-1zM4 28h1v1h-1zM6 28h1v1h-1zM7 28h1v1h-1zM8 28h1v1h-1zM10 28h1v1h-1zM14 28h1v1h-1zM15 28h1v1h-1zM16 28h1v1h-1zM18 28h1v1h-1zM19 28h1v1h-1zM21 28h1v1h-1zM24 28h1v1h-1zM25 28h1v1h-1zM26 28h1v1h-1zM27 28h1v1h-1zM28 28h1v1h-1zM30 28h1v1h-1zM4 29h1v1h-1zM6 29h1v1h-1zM7 29h1v1h-1zM8 29h1v1h-1zM10 29h1v1h-1zM12 29h1v1h-1zM13 29h1v1h-1zM14 29h1v1h-1zM16 29h1v1h-1zM18 29h1v1h-1zM19 29h1v1h-1zM20 29h1v1h-1zM23 29h1v1h-1zM24 29h1v1h-1zM25 29h1v1h-1zM27 29h1v1h-1zM28 29h1v1h-1zM29 29h1v1h-1zM32 29h1v1h-1zM4 30h1v1h-1zM6 30h1v1h-1zM7 30h1v1h-1zM8 30h1v1h-1zM10 30h1v1h-1zM12 30h1v1h-1zM13 30h1v1h-1zM18 30h1v1h-1zM27 30h1v1h-1zM30 30h1v1h-1zM32 30h1v1h-1zM4 31h1v1h-1zM10 31h1v1h-1zM13 31h1v1h-1zM14 31h1v1h-1zM15 31h1v1h-1zM17 31h1v1h-1zM19 31h1v1h-1zM20 31h1v1h-1zM22 31h1v1h-1zM24 31h1v1h-1zM25 31h1v1h-1zM26 31h1v1h-1zM28 31h1v1h-1zM29 31h1v1h-1zM31 31h1v1h-1zM4 32h1v1h-1zM5 32h1v1h-1zM6 32h1v1h-1zM7 32h1v1h-1zM8 32h1v1h-1zM9 32h1v1h-1zM10 32h1v1h-1zM12 32h1v1h-1zM13 32h1v1h-1zM16 32h1v1h-1zM18 32h1v1h-1zM20 32h1v1h-1zM22 32h1v1h-1zM23 32h1v1h-1zM24 32h1v1h-1zM25 32h1v1h-1zM29 32h1v1h-1zM31 32h1v1h-1z"/></svg>
+      <p class="url">tg-techie-agents.github.io/vft/</p>
+    </div>
+  </div>
+
+  <section class="flow" aria-labelledby="how">
+    <h2 id="how">How it works</h2>
+    <svg viewBox="0 0 1200 330" role="img" aria-label="The sender page shows rotating QR codes. They cross the video call. The receiver page captures that shared window, reassembles the file, and checks its SHA-256 before offering it. The receiver sends a gap report back through chat, and the sender repeats only what is missing.">
+      <defs><marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="#6d6a63"/></marker>
+      <marker id="aw" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="#b4532a"/></marker></defs>
+
+      <rect x="10" y="30" width="220" height="150" rx="16" fill="#e9efe9" stroke="#2f5d50" stroke-width="2"/>
+      <text x="120" y="82" text-anchor="middle" font-size="26" font-weight="700">Sender</text>
+      <text x="120" y="116" text-anchor="middle" font-size="20" class="a">tx.html</text>
+      <text x="120" y="148" text-anchor="middle" font-size="17" class="m">pick a file, press Start</text>
+
+      <line x1="234" y1="105" x2="326" y2="105" stroke="#6d6a63" stroke-width="3" marker-end="url(#ah)"/>
+      <text x="280" y="68" text-anchor="middle" font-size="17" class="m">rotating</text>
+      <text x="280" y="90" text-anchor="middle" font-size="17" class="m">QR codes</text>
+
+      <rect x="330" y="30" width="220" height="150" rx="16" fill="#ffffff" stroke="#6d6a63" stroke-width="2"/>
+      <text x="440" y="82" text-anchor="middle" font-size="26" font-weight="700">Video call</text>
+      <text x="440" y="116" text-anchor="middle" font-size="20" class="m">screen share</text>
+      <text x="440" y="148" text-anchor="middle" font-size="17" class="m">tested on Google Meet</text>
+
+      <line x1="554" y1="105" x2="646" y2="105" stroke="#6d6a63" stroke-width="3" marker-end="url(#ah)"/>
+      <text x="600" y="68" text-anchor="middle" font-size="17" class="m">captured</text>
+      <text x="600" y="90" text-anchor="middle" font-size="17" class="m">as video</text>
+
+      <rect x="650" y="30" width="220" height="150" rx="16" fill="#e9efe9" stroke="#2f5d50" stroke-width="2"/>
+      <text x="760" y="82" text-anchor="middle" font-size="26" font-weight="700">Receiver</text>
+      <text x="760" y="116" text-anchor="middle" font-size="20" class="a">rx.html</text>
+      <text x="760" y="148" text-anchor="middle" font-size="17" class="m">captures that window</text>
+
+      <line x1="874" y1="105" x2="966" y2="105" stroke="#6d6a63" stroke-width="3" marker-end="url(#ah)"/>
+      <text x="920" y="68" text-anchor="middle" font-size="17" class="m">checked</text>
+      <text x="920" y="90" text-anchor="middle" font-size="17" class="m">SHA-256</text>
+
+      <rect x="970" y="30" width="220" height="150" rx="16" fill="#ffffff" stroke="#2f5d50" stroke-width="2"/>
+      <text x="1080" y="82" text-anchor="middle" font-size="26" font-weight="700">Saved file</text>
+      <text x="1080" y="116" text-anchor="middle" font-size="20" class="a">byte-identical</text>
+      <text x="1080" y="148" text-anchor="middle" font-size="17" class="m">or withheld</text>
+
+      <path d="M760 184 V258 H120 V186" fill="none" stroke="#b4532a" stroke-width="3" stroke-dasharray="9 7" marker-end="url(#aw)"/>
+      <text x="440" y="246" text-anchor="middle" font-size="19" class="w">gap report, pasted into chat</text>
+      <text x="440" y="296" text-anchor="middle" font-size="18" class="m">the sender then repeats only the pieces that were missed</text>
+    </svg>
+  </section>
+
+  <section aria-labelledby="facts">
+    <h2 id="facts">What to know</h2>
+    <div class="facts">
+      <div class="fact">
+        <h3>Nothing leaves the page</h3>
+        <p>Each page is one file with a Content-Security-Policy of <code>default-src 'none'</code>. The browser itself refuses every network request, so the file only travels over the call.</p>
+      </div>
+      <div class="fact">
+        <h3>Checked, not trusted</h3>
+        <p>The receiver verifies the SHA-256 digest before it offers Save. Any contradiction in what it sees is shown as an error and never as a success.</p>
+      </div>
+      <div class="fact warm">
+        <h3>Slow, on purpose small</h3>
+        <p>About 400 bytes per second in the one real call it was measured on. Good for notes, configs, and small PDFs; not for video.</p>
+      </div>
+    </div>
+  </section>
+
+  <footer>
+    Tested end to end over Google Meet on 2026-08-04: a 69,466-byte PDF arrived byte-identical.
+    Source and notes: <a href="https://github.com/tg-techie-agents/vft">github.com/tg-techie-agents/vft</a>.
+    Built on <a href="licenses.txt">open-source components</a>.
+  </footer>
+</main>
+</body>
+</html>

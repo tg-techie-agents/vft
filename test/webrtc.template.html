@@ -1,0 +1,234 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline' 'wasm-unsafe-eval'; style-src 'unsafe-inline'; img-src data: blob:; media-src blob:">
+<title>VFT WebRTC video-path harness</title>
+<style>
+  body { font: 13px ui-monospace, monospace; background: #fff; margin: 0; padding: 8px; }
+  #out { white-space: pre-wrap; }
+  canvas, video { display: block; margin: 4px 0; max-width: 420px; }
+</style>
+</head>
+<body>
+<canvas id="tx" width="10" height="10"></canvas>
+<video id="rxvideo" autoplay muted playsinline></video>
+<div id="out">running…</div>
+<script>
+/* @@QRCODEGEN@@ */
+</script>
+<script>
+/* @@ZXING@@ */
+</script>
+<script>
+var VFT_WASM_B64 = "@@WASM_B64@@";
+</script>
+<script>
+/* @@PROTOCOL@@ */
+</script>
+<script>
+/* @@ZXING_BOOT@@ */
+</script>
+<script>
+'use strict';
+// Puts a REAL video codec in the path. The TX canvas is captured as a MediaStream
+// and sent through a loopback RTCPeerConnection pair — the same VP8/H.264 encoder,
+// jitter buffer, and frame pacing a video call uses — then decoded off a <video>
+// element by the RX scan loop. Bitrate and resolution scaling are constrained to
+// emulate a poor screen share. No network: both peers are in this page.
+(async function () {
+  const out = [];
+  let failed = 0;
+  const t = (name, ok, extra) => {
+    if (!ok) failed++;
+    out.push((ok ? 'ok    ' : 'FAIL  ') + name + (extra ? ' ' + extra : ''));
+  };
+  const info = msg => out.push('info  ' + msg);
+  const flush = () => {
+    document.getElementById('out').textContent =
+      'VFT-WEBRTC: ' + (failed ? 'FAIL' : 'PASS') + '\n' + out.join('\n');
+    document.title = 'VFT-WEBRTC-' + (failed ? 'FAIL' : 'PASS');
+  };
+  const sleep = ms => new Promise(r => setTimeout(r, ms));
+
+  const txCanvas = document.getElementById('tx');
+  const txCtx = txCanvas.getContext('2d');
+  const rxVideo = document.getElementById('rxvideo');
+  const grab = document.createElement('canvas');
+  const grabCtx = grab.getContext('2d', { willReadFrequently: true });
+
+  // Draw one Symbol filling a screen-share-sized frame, as the TX Client does.
+  function showSymbol(msg, frameW, frameH) {
+    const qr = qrcodegen.QrCode.encodeSegments(
+      [qrcodegen.QrSegment.makeBytes(Array.from(msg))], qrcodegen.QrCode.Ecc.MEDIUM);
+    const quiet = 4, cell = qr.size + quiet * 2;
+    txCanvas.width = frameW; txCanvas.height = frameH;
+    const scale = Math.max(1, Math.floor(Math.min(frameW, frameH) / cell));
+    const ox = Math.floor((frameW - cell * scale) / 2);
+    const oy = Math.floor((frameH - cell * scale) / 2);
+    txCtx.fillStyle = '#fff'; txCtx.fillRect(0, 0, frameW, frameH);
+    txCtx.fillStyle = '#000';
+    for (let y = 0; y < qr.size; y++) for (let x = 0; x < qr.size; x++) {
+      if (qr.getModule(x, y))
+        txCtx.fillRect(ox + (x + quiet) * scale, oy + (y + quiet) * scale, scale, scale);
+    }
+    return qr.size;
+  }
+
+  // Capture the RX video frame and decode whatever Symbols survived the codec.
+  async function scanVideo() {
+    if (!rxVideo.videoWidth) return [];
+    grab.width = rxVideo.videoWidth;
+    grab.height = rxVideo.videoHeight;
+    grabCtx.drawImage(rxVideo, 0, 0);
+    try {
+      return await VFTZX.decodeSymbols(ZXingWASM,
+        grabCtx.getImageData(0, 0, grab.width, grab.height));
+    } catch (e) { return []; }
+  }
+
+  try {
+    await VFTZX.boot(ZXingWASM, VFTZX.wasmFromBase64(VFT_WASM_B64));
+    t('decoder ready', true);
+
+    // ---- Build the loopback call. No ICE servers, no signaling: both ends here.
+    const FRAME_W = 1280, FRAME_H = 720, FPS = 10;
+    showSymbol(new Uint8Array([0]), FRAME_W, FRAME_H);
+    const stream = txCanvas.captureStream(FPS);
+    t('canvas captured as a MediaStream', stream.getVideoTracks().length === 1);
+
+    const pc1 = new RTCPeerConnection({ iceServers: [] });
+    const pc2 = new RTCPeerConnection({ iceServers: [] });
+    pc1.onicecandidate = e => e.candidate && pc2.addIceCandidate(e.candidate);
+    pc2.onicecandidate = e => e.candidate && pc1.addIceCandidate(e.candidate);
+    const inbound = new Promise(res => { pc2.ontrack = e => res(e.streams[0]); });
+    const sender = pc1.addTrack(stream.getVideoTracks()[0], stream);
+
+    const offer = await pc1.createOffer();
+    await pc1.setLocalDescription(offer);
+    await pc2.setRemoteDescription(offer);
+    const answer = await pc2.createAnswer();
+    await pc2.setLocalDescription(answer);
+    await pc1.setRemoteDescription(answer);
+
+    // Constrain the sender the way a call under pressure would: a modest
+    // bitrate cap, so the encoder must actually throw away detail.
+    const MAX_BITRATE = 1200000;   // 1.2 Mbps, a plausible screen-share allocation
+    const params = sender.getParameters();
+    params.encodings = [{ maxBitrate: MAX_BITRATE, scaleResolutionDownBy: 1 }];
+    await sender.setParameters(params);
+    info(`sender constrained to ${(MAX_BITRATE / 1e6).toFixed(1)} Mbps at ${FRAME_W}x${FRAME_H}@${FPS}`);
+
+    rxVideo.srcObject = await inbound;
+    await rxVideo.play();
+    for (let i = 0; i < 100 && !rxVideo.videoWidth; i++) await sleep(100);
+    t('video flowing through the peer connection',
+      rxVideo.videoWidth > 0, `${rxVideo.videoWidth}x${rxVideo.videoHeight}`);
+
+    // Confirm the frames really went through a video codec.
+    let codec = '(unknown)';
+    for (const [, s] of await pc2.getStats()) {
+      if (s.type === 'codec' && s.mimeType && s.mimeType.startsWith('video/')) codec = s.mimeType;
+    }
+    info('negotiated video codec: ' + codec);
+    t('a video codec is in the path', /^video\//.test(codec), codec);
+
+    // ---- Slice-size sweep: what survives this call? (SPEC A.5's tuning knob,
+    // measured on the channel rather than estimated.)
+    const tag = new Uint8Array(8).fill(0xa5);
+    const SETTLE_MS = 700, TRIES = 6;
+    const sweep = [];
+    for (const sliceLen of [400, 800, 1200, 1800]) {
+      let decoded = 0;
+      let modules = 0;
+      for (let i = 0; i < TRIES; i++) {
+        const slice = Uint8Array.from({ length: sliceLen }, (_, j) => (j * 31 + i * 7) & 0xff);
+        const msg = VFT.buildDataMessage(tag, i * sliceLen, slice);
+        modules = showSymbol(msg, FRAME_W, FRAME_H);
+        await sleep(SETTLE_MS);   // let the encoder send a clean frame
+        const found = await scanVideo();
+        // Count it only if the exact bytes came back.
+        if (found.some(p => VFT.toHex(p) === VFT.toHex(msg))) decoded++;
+      }
+      sweep.push({ sliceLen, modules, decoded, tries: TRIES });
+      info(`slice ${String(sliceLen).padStart(4)}B -> QR ${modules}x${modules} modules: ` +
+        `${decoded}/${TRIES} Symbols survived the codec`);
+    }
+    const usable = sweep.filter(s => s.decoded === s.tries).map(s => s.sliceLen);
+    t('at least one Slice size survives a 1.2 Mbps video call every time',
+      usable.length > 0, JSON.stringify(sweep));
+    info('Slice sizes with a perfect record on this channel: ' +
+      (usable.length ? usable.join(', ') + ' bytes' : 'none'));
+
+    // ---- A real transfer, end to end, through the video codec.
+    const payload = new Uint8Array(8000);
+    for (let i = 0; i < payload.length; i++) payload[i] = (i * 97 + (i >> 4)) & 0xff;
+    const h = await VFT.sha256Async(payload);
+    const ftag = h.slice(0, 8);
+    const setupMsg = VFT.buildSetupMessage(ftag, 'over-the-call.bin', payload.length, h);
+
+    const engine = new VFT.RxEngine();
+    const incs = [];
+    engine.onIncoherence = (tr, inc) => incs.push(inc.type);
+
+    const SLICE = usable.length ? Math.max(...usable) : 400;
+    info(`transferring ${payload.length} B over the call at ${SLICE} B/Slice`);
+
+    // Scan continuously while the TX advances Slides, exactly like the clients.
+    let scanning = true;
+    const scanLoop = (async () => {
+      while (scanning) {
+        for (const p of await scanVideo()) engine.ingest(p);
+        await sleep(120);
+      }
+    })();
+
+    let ranges = [[0, payload.length]];
+    let rotations = 0;
+    const startedAt = performance.now();
+    while (rotations < 4 && performance.now() - startedAt < 120000) {
+      rotations++;
+      const chunks = VFT.shuffle(VFT.planChunks(ranges, SLICE), VFT.rng(rotations * 13));
+      const slides = [setupMsg];
+      let n = 0;
+      for (const [s, e] of chunks) {
+        slides.push(VFT.buildDataMessage(ftag, s, payload.subarray(s, e)));
+        if (++n % 6 === 0) slides.push(setupMsg);
+      }
+      for (const msg of slides) {
+        showSymbol(msg, FRAME_W, FRAME_H);
+        await sleep(SETTLE_MS);
+      }
+      const tr = engine.transfers.get(VFT.toHex(ftag));
+      info(`rotation ${rotations}: ${tr ? (100 * tr.heldBytes() / payload.length).toFixed(1) : 0}% held`);
+      if (tr && tr.hasFullCoverage()) break;
+      if (tr && tr.setup) {
+        const parsed = VFT.parseGapReport(tr.gapReport(6));
+        if (!parsed.error && parsed.ranges.length) ranges = parsed.ranges;
+      }
+    }
+    scanning = false;
+    await scanLoop;
+
+    const tr = engine.transfers.get(VFT.toHex(ftag));
+    t('transfer bound over the call', !!tr && !!tr.setup);
+    t('full coverage over the call', !!tr && tr.hasFullCoverage(),
+      tr ? `${(100 * tr.heldBytes() / payload.length).toFixed(1)}%` : 'none');
+    if (tr && tr.hasFullCoverage()) {
+      await tr.checkCompletion();
+      t('digest verified after passing through the video codec', tr.complete);
+      t('bytes identical after the codec round trip', VFT.bytesEqual(tr.buf, payload));
+    }
+    t('no incoherence caused by codec artifacts (§7.4.16)', incs.length === 0, JSON.stringify(incs));
+    info(`counters: ${tr ? JSON.stringify(tr.counters) : 'n/a'}`);
+    info(`channel loss counted as ordinary: ${engine.counters.loss} symbol(s)`);
+
+    pc1.close(); pc2.close();
+  } catch (e) {
+    t('exception: ' + (e && e.message) + '\n' + (e && e.stack), false);
+  }
+  flush();
+})();
+</script>
+</body>
+</html>
